@@ -1,0 +1,110 @@
+plugins {
+    id 'com.gradle.plugin-publish' version '0.12.0'
+    id 'java-gradle-plugin'
+    id 'idea'
+    id 'maven-publish'
+    id 'groovy'
+}
+
+repositories {
+    maven {
+        url "https://plugins.gradle.org/m2/"
+    }
+    mavenLocal()
+}
+
+dependencies {
+    api 'com.google.code.gson:gson:2.8.6'
+    api 'edu.wpi.first:gradle-cpp-vscode:0.12.0'
+
+    api 'edu.wpi.first:native-utils:2021.0.5'
+
+    api 'de.undercouch:gradle-download-task:4.1.1'
+
+    testImplementation('org.spockframework:spock-core:1.2-groovy-2.5') {
+        exclude group: 'org.codehaus.groovy'
+    }
+    testImplementation gradleTestKit()
+}
+
+archivesBaseName = "GradleRIO"
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+compileGroovy {
+    sourceCompatibility = '8'
+    targetCompatibility = '8'
+}
+
+allprojects {
+    group = "edu.wpi.first"
+
+    if (project.hasProperty('publishVersion')) {
+        version = project.publishVersion
+    }
+}
+
+pluginBundle {
+    website = 'https://github.com/wpilibsuite/GradleRIO'
+    vcsUrl = 'https://github.com/wpilibsuite/GradleRIO'
+    description = 'Managing FRC projects, the Gradle way (2019+)'
+    tags = ['frc', 'wpilib', 'gradlerio']
+}
+
+gradlePlugin {
+    plugins {
+        gradleRio {
+            id = 'edu.wpi.first.GradleRIO'
+            displayName = 'GradleRIO'
+            implementationClass = 'edu.wpi.first.gradlerio.GradleRIOPlugin'
+        }
+    }
+}
+
+apply from: 'versionupdates.gradle'
+
+def examplesFolder = file("$rootDir/examples")
+
+tasks.register('PatchExamples') {
+    doLast {
+        String regex = "(id\\s*?[\\\"|\\']edu\\.wpi\\.first\\.GradleRIO[\\\"|\\'].*?version\\s*?[\\\"|\\'])(.+?)([\\\"|\\'])";
+
+        examplesFolder.eachFile { File file ->
+            if (file.isDirectory() && file.name != '_archived') {
+                def buildGradleFile = new File(file, 'build.gradle')
+                if (buildGradleFile.exists() && buildGradleFile.isFile()) {
+                    def text = buildGradleFile.text
+                    text = text.replaceAll(regex, "id \"edu.wpi.first.GradleRIO\" version \"${version}\"")
+                    buildGradleFile.text = text
+                }
+            }
+        }
+    }
+}
+
+task zipExamples(dependsOn: PatchExamples)
+
+examplesFolder.eachFile { File file ->
+    if (file.isDirectory() && file.name != '_archived') {
+        task "zipExample${file.name}"(type: Zip) {
+            from(file) {
+                archiveFileName = "${file.name}.zip"
+                exclude 'build/'
+                exclude '.gradle/'
+            }
+
+            zipExamples.dependsOn it
+            it.dependsOn PatchExamples
+        }
+    }
+}
+
+jar.finalizedBy zipExamples
+
+wrapper {
+    gradleVersion = '6.0'
+    distributionType = Wrapper.DistributionType.BIN
+}

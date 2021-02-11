@@ -1,0 +1,68 @@
+
+def versionMap = [
+  wpilibVersion: 'edu.wpi.first.wpilibj:wpilibj-java:+',
+  smartDashboardVersion: 'edu.wpi.first.tools:SmartDashboard:+:win64',
+  outlineViewerVersion: 'edu.wpi.first.tools:OutlineViewer:+:win64',
+  robotBuilderVersion: 'edu.wpi.first.tools:RobotBuilder:+',
+  robotBuilderOldVersion: 'edu.wpi.first.tools:RobotBuilder-Old:+',
+  shuffleboardVersion: 'edu.wpi.first.shuffleboard:shuffleboard:+:win64',
+  pathWeaverVersion: 'edu.wpi.first.tools:PathWeaver:+:win64',
+  glassVersion: 'edu.wpi.first.tools:Glass:+:windowsx86-64@zip',
+  opencvVersion: 'edu.wpi.first.thirdparty.frc2021.opencv:opencv-java:+',
+  googleTestVersion: 'edu.wpi.first.thirdparty.frc2021:googletest:+:headers',
+  niLibrariesVersion: 'edu.wpi.first.ni-libraries:chipobject:+:headers',
+  imguiVersions: 'edu.wpi.first.thirdparty.frc2021:imgui:+:headers',
+  wpimathVersion: 'edu.wpi.first.wpimath:wpimath-java:+'
+]
+
+configurations {
+  gradleRioVersions
+}
+
+def useDevelopmentProperty = 'useDevelopment'
+
+project.repositories.maven { repo ->
+    repo.name = "WPI"
+    if (project.hasProperty(useDevelopmentProperty)) {
+      repo.url = "https://frcmaven.wpi.edu/artifactory/development"
+    } else {
+      repo.url = "https://frcmaven.wpi.edu/artifactory/release"
+    }
+}
+
+dependencies {
+  versionMap.each { key, value ->
+    gradleRioVersions value
+  }
+}
+
+String regex = "String\\s+?placeholder\\s+?=\\s+?[\\\"|\\'].+?[\\\"|\\']"
+String mavenDevRegex = "this\\.useDevelopment\\s*=\\s*(true|false)"
+
+
+tasks.register('UpdateVersions') {
+  doLast {
+    def mavenExtFile = file('src/main/groovy/edu/wpi/first/gradlerio/wpi/WPIMavenExtension.groovy')
+    def mavenExtText = mavenExtFile.text
+    def toSet = "this.useDevelopment = false"
+    if (project.hasProperty(useDevelopmentProperty)) {
+      toSet = "this.useDevelopment = true"
+    }
+
+    mavenExtFile.text = mavenExtText.replaceAll(mavenDevRegex, toSet)
+
+
+    def extFile = file('src/main/groovy/edu/wpi/first/gradlerio/wpi/WPIExtension.groovy')
+    def extText = extFile.text
+    configurations.gradleRioVersions.resolvedConfiguration.resolvedArtifacts.each {
+      versionMap.each { key, value ->
+        def id = it.moduleVersion.id
+        if (value.startsWith("${id.group}:${it.name}:+".toString())) {
+          def localRegex = regex.replace('placeholder', key)
+          extText = extText.replaceAll(localRegex, "String ${key} = \"${id.version}\"".toString())
+        }
+      }
+    }
+    extFile.text = extText
+  }
+}
